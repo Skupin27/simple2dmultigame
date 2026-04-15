@@ -13,11 +13,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Game constants
 const TICK_RATE = 30;          // 30 updates per second (tag detection)
-const BASE_SPEED = 3.2;
-const SPRINT_MULTIPLIER = 2.0;
-const CANVAS_W = 1100;
-const CANVAS_H = 750;
-const PLAYER_RADIUS = 22;
+const BASE_SPEED = 5.0;
+const SPRINT_MULTIPLIER = 2.5;
+const CANVAS_W = 1300;
+const CANVAS_H = 850;
+const PLAYER_RADIUS = 15;
 
 let players = {};      // id -> { x, y, color, nickname, isIt, sprinting }
 let itPlayerId = null;
