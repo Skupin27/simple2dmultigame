@@ -1,17 +1,40 @@
+<!-- public/index.html -->
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Multiplayer 2D</title>
-  <style>
-    body { margin: 0; overflow: hidden; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    canvas { border: 2px solid #333; background: #222; }
-  </style>
+  <title>Tag It — Multiplayer Chase</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <!-- Nickname Modal -->
+  <div id="nicknameModal" class="modal">
+    <div class="modal-card">
+      <h1>🏃‍♂️ TAG·IT 🏃‍♀️</h1>
+      <p>Enter your runner name</p>
+      <input type="text" id="nicknameInput" maxlength="14" placeholder="Speedy Fox" autocomplete="off">
+      <button id="joinGameBtn">⚡ JOIN ARENA ⚡</button>
+      <div class="hint">Hold <kbd>SHIFT</kbd> to sprint • Tag the "IT" player</div>
+    </div>
+  </div>
+
+  <!-- In-Game HUD -->
+  <div id="gameHud" class="game-hud hidden">
+    <div class="it-status" id="itDisplay">🎯 IT: —</div>
+    <div class="sprint-hint">
+      <span>⚡ SPRINT</span>
+      <kbd>⇧ SHIFT</kbd>
+    </div>
+  </div>
+
+  <!-- Toast messages -->
+  <div id="toastMsg" class="toast hidden"></div>
+
+  <!-- Game Canvas -->
+  <canvas id="gameCanvas" width="1100" height="750"></canvas>
+
   <script src="/socket.io/socket.io.js"></script>
-  <script src="game.js"></script>
+  <script src="/game.js"></script>
 </body>
 </html>
