@@ -12,7 +12,7 @@ const io = socketIo(server, { cors: { origin: '*' } });
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Game constants
-const TICK_RATE = 100;          // 30 updates per second (tag detection)
+const TICK_RATE = 10;          // 30 updates per second (tag detection)
 const BASE_SPEED = 5.0;
 const SPRINT_MULTIPLIER = 2.5;
 const CANVAS_W = 1090;
