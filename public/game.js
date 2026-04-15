@@ -185,7 +185,7 @@ function draw() {
 
     // Circle body
     ctx.beginPath();
-    ctx.arc(drawX, drawY, 22, 0, Math.PI * 2);
+    ctx.arc(drawX, drawY, 10, 0, Math.PI * 2);
     ctx.fillStyle = player.color;
     ctx.fill();
     ctx.strokeStyle = player.isIt ? '#ffaa33' : '#ffffff';
