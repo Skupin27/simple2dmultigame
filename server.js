@@ -17,7 +17,7 @@ const BASE_SPEED = 10;
 const SPRINT_MULTIPLIER = 1.5;
 const CANVAS_W = 1100;
 const CANVAS_H = 750;
-const PLAYER_RADIUS = 27;
+const PLAYER_RADIUS = 10;
 
 let players = {};      // id -> { x, y, color, nickname, isIt, sprinting }
 let itPlayerId = null;
