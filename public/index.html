@@ -21,7 +21,11 @@
 
   <!-- In-Game HUD -->
   <div id="gameHud" class="game-hud hidden">
-    <div class="it-status" id="itDisplay">IT: —</div>
+    <div class="hud-left">
+      <div class="it-status" id="itDisplay">IT: —</div>
+      <div class="round-badge" id="roundDisplay">R1</div>
+    </div>
+    <div class="timer-display" id="timerDisplay">5:00</div>
     <div class="hud-right">
       <span id="playerCount" class="player-count">— online</span>
       <div class="sprint-hint"><span>sprint</span><kbd>⇧</kbd></div>
@@ -30,6 +34,16 @@
 
   <!-- Toast messages -->
   <div id="toastMsg" class="toast hidden"></div>
+
+  <!-- Break / round-end overlay -->
+  <div id="breakOverlay" class="break-overlay hidden">
+    <div class="break-card">
+      <div class="break-label">round over</div>
+      <p class="break-it-line"><span id="breakItName">—</span> was IT</p>
+      <div class="break-next">round <span id="breakRoundNum">2</span> starting in</div>
+      <div class="break-countdown" id="breakCountdown">10</div>
+    </div>
+  </div>
 
   <!-- Game Canvas -->
   <canvas id="gameCanvas" width="1100" height="750"></canvas>
