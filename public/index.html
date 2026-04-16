@@ -22,7 +22,10 @@
   <!-- In-Game HUD -->
   <div id="gameHud" class="game-hud hidden">
     <div class="it-status" id="itDisplay">IT: —</div>
-    <div class="sprint-hint"><span>sprint</span><kbd>⇧</kbd></div>
+    <div class="hud-right">
+      <span id="playerCount" class="player-count">— online</span>
+      <div class="sprint-hint"><span>sprint</span><kbd>⇧</kbd></div>
+    </div>
   </div>
 
   <!-- Toast messages -->
@@ -30,6 +33,12 @@
 
   <!-- Game Canvas -->
   <canvas id="gameCanvas" width="1100" height="750"></canvas>
+
+  <!-- Touch joystick (hidden until touch device detected) -->
+  <div id="joystick" class="joystick" style="display:none">
+    <div id="joystickThumb" class="joystick-thumb"></div>
+  </div>
+  <button id="sprintBtn" class="sprint-touch-btn" style="display:none">sprint</button>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="/game.js"></script>
