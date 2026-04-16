@@ -185,8 +185,8 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 
 function drawObstacles() {
   for (const o of OBSTACLES) {
-    ctx.fillStyle   = '#1a2020';
-    ctx.strokeStyle = '#263030';
+    ctx.fillStyle   = '#ffffff';
+    ctx.strokeStyle = '#cccccc';
     ctx.lineWidth   = 1;
     ctx.fillRect(o.x, o.y, o.w, o.h);
     ctx.strokeRect(o.x, o.y, o.w, o.h);
