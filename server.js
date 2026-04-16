@@ -10,15 +10,17 @@ const io     = socketIo(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const TICK_RATE        = 100;          // state broadcasts per second
+const TICK_RATE        = 100;
 const BASE_SPEED       = 10;
 const SPRINT_MULT      = 1.5;
 const CANVAS_W         = 1100;
 const CANVAS_H         = 750;
 const PLAYER_RADIUS    = 10;
-const TAG_IMMUNITY_MS  = 2000;        // grace period after losing IT status
+const TAG_IMMUNITY_MS  = 2000;
 
-// Must match client
+const ROUND_DURATION   = 300;   // seconds (5 minutes)
+const BREAK_DURATION   = 10;    // seconds between rounds
+
 const OBSTACLES = [
   { x: 180, y: 140, w: 130, h: 18 },
   { x: 790, y: 140, w: 130, h: 18 },
@@ -41,6 +43,71 @@ function obstacleBlocked(px, py) {
 let players    = {};
 let itPlayerId = null;
 
+// ── Round / timer state ──────────────────────────────────────────────────────
+let roundNumber  = 1;
+let roundState   = 'playing';   // 'playing' | 'break'
+let roundTimeLeft = ROUND_DURATION;
+let breakTimeLeft = 0;
+let roundWinnerId = null;       // player who was NOT IT when time ran out (random non-IT)
+
+function startRound() {
+  roundState    = 'playing';
+  roundTimeLeft = ROUND_DURATION;
+  roundWinnerId = null;
+
+  // Reset immunity on all players
+  const now = Date.now();
+  for (const id in players) {
+    players[id].isIt       = false;
+    players[id].immuneUntil = 0;
+  }
+
+  // Pick new IT randomly
+  const ids = Object.keys(players);
+  if (ids.length > 0) {
+    const newIt = ids[Math.floor(Math.random() * ids.length)];
+    itPlayerId = newIt;
+    players[newIt].isIt = true;
+    io.emit('roundStart', {
+      roundNumber,
+      itNickname: players[newIt].nickname,
+    });
+  } else {
+    itPlayerId = null;
+  }
+}
+
+function endRound() {
+  roundState    = 'break';
+  breakTimeLeft = BREAK_DURATION;
+
+  // Find who is currently IT — they "lose" this round
+  const itName = (itPlayerId && players[itPlayerId])
+    ? players[itPlayerId].nickname
+    : 'nobody';
+
+  io.emit('roundEnd', {
+    roundNumber,
+    itNickname: itName,
+    breakDuration: BREAK_DURATION,
+  });
+
+  roundNumber++;
+}
+
+// 1-second timer tick
+setInterval(() => {
+  if (Object.keys(players).length === 0) return;
+
+  if (roundState === 'playing') {
+    roundTimeLeft = Math.max(0, roundTimeLeft - 1);
+    if (roundTimeLeft === 0) endRound();
+  } else {
+    breakTimeLeft = Math.max(0, breakTimeLeft - 1);
+    if (breakTimeLeft === 0) startRound();
+  }
+}, 1000);
+
 function assignIt(excludeId) {
   const ids = Object.keys(players).filter(id => id !== excludeId);
   if (ids.length === 0) { itPlayerId = null; return; }
@@ -50,6 +117,7 @@ function assignIt(excludeId) {
 }
 
 function checkTagCollisions() {
+  if (roundState !== 'playing') return;
   if (!itPlayerId || !players[itPlayerId]) return;
   const it  = players[itPlayerId];
   const now = Date.now();
@@ -57,12 +125,12 @@ function checkTagCollisions() {
   for (const id in players) {
     if (id === itPlayerId) continue;
     const other = players[id];
-    if (now < (other.immuneUntil || 0)) continue;  // immune — skip
+    if (now < (other.immuneUntil || 0)) continue;
     const dist = Math.hypot(it.x - other.x, it.y - other.y);
     if (dist < PLAYER_RADIUS * 1.9) {
       const taggerName = it.nickname;
       players[itPlayerId].isIt = false;
-      players[itPlayerId].immuneUntil = now + TAG_IMMUNITY_MS;  // old IT gets grace
+      players[itPlayerId].immuneUntil = now + TAG_IMMUNITY_MS;
       other.isIt   = true;
       itPlayerId   = id;
       io.emit('itChanged', { newItNickname: other.nickname, taggerNickname: taggerName });
@@ -76,13 +144,21 @@ setInterval(() => {
   checkTagCollisions();
 
   const now      = Date.now();
-  const snapshot = { players: {}, itId: itPlayerId, playerCount: Object.keys(players).length };
+  const snapshot = {
+    players: {}, itId: itPlayerId,
+    playerCount: Object.keys(players).length,
+    timer: {
+      state:        roundState,
+      timeLeft:     roundState === 'playing' ? roundTimeLeft : breakTimeLeft,
+      roundNumber,
+    },
+  };
   for (const id in players) {
     const p = players[id];
     snapshot.players[id] = {
       x: p.x, y: p.y, color: p.color,
       nickname: p.nickname, isIt: p.isIt,
-      immune: now < (p.immuneUntil || 0)
+      immune: now < (p.immuneUntil || 0),
     };
   }
   io.emit('gameState', snapshot);
@@ -95,7 +171,6 @@ io.on('connection', (socket) => {
   socket.on('setNickname', (raw) => {
     currentNickname = String(raw).slice(0, 14);
 
-    // Spawn away from obstacles
     let spawnX, spawnY, attempts = 0;
     do {
       spawnX = Math.random() * (CANVAS_W - 100) + 50;
@@ -106,7 +181,7 @@ io.on('connection', (socket) => {
       x: spawnX, y: spawnY,
       color: `hsl(${Math.random() * 360}, 70%, 65%)`,
       nickname: currentNickname,
-      isIt: false, sprinting: false, immuneUntil: 0
+      isIt: false, sprinting: false, immuneUntil: 0,
     };
 
     if (!itPlayerId || !players[itPlayerId]) {
@@ -114,20 +189,28 @@ io.on('connection', (socket) => {
       players[socket.id].isIt = true;
     }
 
-    // Send current state to new player
     const init = {};
     const now  = Date.now();
     for (const id in players) {
       const p = players[id];
       init[id] = { x: p.x, y: p.y, color: p.color, nickname: p.nickname, isIt: p.isIt, immune: now < (p.immuneUntil || 0) };
     }
-    socket.emit('currentPlayers', { players: init, itId: itPlayerId, playerCount: Object.keys(players).length });
+    socket.emit('currentPlayers', {
+      players: init, itId: itPlayerId,
+      playerCount: Object.keys(players).length,
+      timer: {
+        state:    roundState,
+        timeLeft: roundState === 'playing' ? roundTimeLeft : breakTimeLeft,
+        roundNumber,
+      },
+    });
     socket.broadcast.emit('newPlayer', { id: socket.id, ...players[socket.id] });
     io.emit('playerCount', Object.keys(players).length);
     console.log(`🏷️  ${currentNickname} joined. Total: ${Object.keys(players).length}`);
   });
 
   socket.on('move', (data) => {
+    if (roundState !== 'playing') return;   // no movement during break
     const p = players[socket.id];
     if (!p) return;
 
@@ -139,10 +222,9 @@ io.on('connection', (socket) => {
     const nx = Math.max(PLAYER_RADIUS, Math.min(CANVAS_W - PLAYER_RADIUS, p.x + dx * speed));
     const ny = Math.max(PLAYER_RADIUS, Math.min(CANVAS_H - PLAYER_RADIUS, p.y + dy * speed));
 
-    // Slide collision against obstacles
-    if      (!obstacleBlocked(nx, ny)) { p.x = nx; p.y = ny; }
-    else if (!obstacleBlocked(nx, p.y)) { p.x = nx; }
-    else if (!obstacleBlocked(p.x, ny)) { p.y = ny; }
+    if      (!obstacleBlocked(nx, ny))       { p.x = nx; p.y = ny; }
+    else if (!obstacleBlocked(nx, p.y))      { p.x = nx; }
+    else if (!obstacleBlocked(p.x, ny))      { p.y = ny; }
 
     p.sprinting = !!data.sprint;
   });
@@ -151,7 +233,7 @@ io.on('connection', (socket) => {
     console.log(`🔴 ${currentNickname} left`);
     const wasIt = itPlayerId === socket.id;
     delete players[socket.id];
-    if (wasIt) {
+    if (wasIt && roundState === 'playing') {
       const ids = Object.keys(players);
       if (ids.length > 0) {
         const newIt = ids[Math.floor(Math.random() * ids.length)];
