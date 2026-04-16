@@ -40,7 +40,7 @@ let localPos      = { x: 0, y: 0 };
 let serverPos     = { x: 0, y: 0 };
 let localPosReady = false;
 
-const OBSTACLES = [
+let obstacles = [
   { x: 180, y: 140, w: 130, h: 18 },
   { x: 790, y: 140, w: 130, h: 18 },
   { x: 490, y: 290, w: 18,  h: 160 },
@@ -50,8 +50,12 @@ const OBSTACLES = [
   { x: 742, y: 600, w: 18,  h: 100 },
 ];
 
+// Flash animation when walls shuffle
+let wallsChangedAt = 0;
+const WALL_FLASH_MS = 700;
+
 function obstacleBlocked(px, py) {
-  for (const o of OBSTACLES) {
+  for (const o of obstacles) {
     const cx = Math.max(o.x, Math.min(px, o.x + o.w));
     const cy = Math.max(o.y, Math.min(py, o.y + o.h));
     if (Math.hypot(px - cx, py - cy) < PLAYER_RADIUS) return true;
@@ -144,6 +148,10 @@ function onCurrentPlayers(data) {
     serverPos.x = localPos.x;
     serverPos.y = localPos.y;
     localPosReady = true;
+  }
+
+  if (data.obstacles && data.obstacles.length) {
+    obstacles = data.obstacles;
   }
 
   if (playerCountSpan && data.playerCount != null)
@@ -266,10 +274,20 @@ function sendMovement() {
 function lerp(a, b, t) { return a + (b - a) * t; }
 
 function drawObstacles() {
-  for (const o of OBSTACLES) {
-    ctx.fillStyle   = '#ffffff';
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth   = 1;
+  const now       = Date.now();
+  const flashAge  = now - wallsChangedAt;
+  const flashing  = flashAge < WALL_FLASH_MS;
+  // Fade from bright accent → normal white over WALL_FLASH_MS
+  const flashT    = flashing ? 1 - flashAge / WALL_FLASH_MS : 0;
+
+  for (const o of obstacles) {
+    // Base fill blended toward accent on flash
+    const r = Math.round(255 * flashT + 255 * (1 - flashT));
+    const g = Math.round(255 * flashT + 255 * (1 - flashT));
+    const b = Math.round( 96 * flashT + 255 * (1 - flashT));
+    ctx.fillStyle   = flashing ? `rgb(${r},${g},${b})` : '#ffffff';
+    ctx.strokeStyle = flashing ? `rgba(200,240,96,${flashT * 0.9})` : '#cccccc';
+    ctx.lineWidth   = flashing ? 1 + flashT * 2 : 1;
     ctx.fillRect(o.x, o.y, o.w, o.h);
     ctx.strokeRect(o.x, o.y, o.w, o.h);
   }
@@ -449,6 +467,13 @@ function initGame(nickname) {
       : `${data.newItNickname} is now IT`;
     showToast(msg, 1800);
     addLog(msg);
+  });
+
+  socket.on('wallsUpdate', (data) => {
+    obstacles      = data.obstacles;
+    wallsChangedAt = Date.now();
+    showToast('walls shuffled!', 1800);
+    addLog('walls shuffled');
   });
 
   setInterval(sendMovement, 1000 / 30);
