@@ -142,7 +142,7 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   // Draw grid effect (light lines)
-  ctx.strokeStyle = '#2f4f5c';
+  ctx.strokeStyle = '#1e1e1e';
   ctx.lineWidth = 0.5;
   for (let i = 0; i < canvas.width; i += 50) {
     ctx.beginPath();
