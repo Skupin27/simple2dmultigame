@@ -6,7 +6,10 @@ const path     = require('path');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = socketIo(server, { cors: { origin: '*' } });
+const io = socketIo(server, {
+  cors: { origin: '*' },
+  transports: ['websocket'],
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
