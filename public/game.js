@@ -7,8 +7,14 @@ const gameHud        = document.getElementById('gameHud');
 const toastDiv       = document.getElementById('toastMsg');
 const itDisplaySpan  = document.getElementById('itDisplay');
 const playerCountSpan = document.getElementById('playerCount');
+const timerSpan      = document.getElementById('timerDisplay');
+const roundSpan      = document.getElementById('roundDisplay');
 const nicknameInput  = document.getElementById('nicknameInput');
 const joinBtn        = document.getElementById('joinGameBtn');
+const breakOverlay   = document.getElementById('breakOverlay');
+const breakCountdown = document.getElementById('breakCountdown');
+const breakItName    = document.getElementById('breakItName');
+const breakRoundNum  = document.getElementById('breakRoundNum');
 
 let socket        = null;
 let localPlayerId = null;
@@ -18,18 +24,22 @@ let remotePlayers = {};
 let playerTargets = {};
 let itPlayerId    = null;
 
-// ── Client-side prediction ───────────────────────────────────────────────────
+// ── Timer state ───────────────────────────────────────────────────────────────
+let timerState    = 'playing';
+let timerTimeLeft = 300;
+let timerRound    = 1;
+
+// ── Client-side prediction ────────────────────────────────────────────────────
 const BASE_SPEED    = 10;
 const SPRINT_MULT   = 1.5;
 const CANVAS_W      = 1100;
 const CANVAS_H      = 750;
 const PLAYER_RADIUS = 10;
 
-let localPos            = { x: 0, y: 0 };
-let serverPos           = { x: 0, y: 0 };
-let localPosReady       = false;
+let localPos      = { x: 0, y: 0 };
+let serverPos     = { x: 0, y: 0 };
+let localPosReady = false;
 
-// Must match server
 const OBSTACLES = [
   { x: 180, y: 140, w: 130, h: 18 },
   { x: 790, y: 140, w: 130, h: 18 },
@@ -49,31 +59,68 @@ function obstacleBlocked(px, py) {
   return false;
 }
 
-// ── Tag log ──────────────────────────────────────────────────────────────────
-const tagLog    = [];
-const LOG_MAX   = 4;
-const LOG_TTL   = 6000;
+// ── Tag log ───────────────────────────────────────────────────────────────────
+const tagLog  = [];
+const LOG_MAX = 4;
+const LOG_TTL = 6000;
 
 function addLog(text) {
   tagLog.unshift({ text, ts: Date.now() });
   if (tagLog.length > LOG_MAX) tagLog.pop();
 }
 
-// ── Keys ─────────────────────────────────────────────────────────────────────
+// ── Keys ──────────────────────────────────────────────────────────────────────
 const keys = {
   ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
   KeyA: false, KeyD: false, KeyW: false, KeyS: false,
-  ShiftLeft: false, ShiftRight: false
+  ShiftLeft: false, ShiftRight: false,
 };
 
-// ── Toast ────────────────────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────────────
 function showToast(msg, ms = 2000) {
   toastDiv.textContent = msg;
   toastDiv.classList.remove('hidden');
   setTimeout(() => toastDiv.classList.add('hidden'), ms);
 }
 
-// ── HUD ──────────────────────────────────────────────────────────────────────
+// ── Timer helpers ─────────────────────────────────────────────────────────────
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function updateTimerHUD() {
+  if (!timerSpan || !roundSpan) return;
+  roundSpan.textContent = `R${timerRound}`;
+
+  if (timerState === 'playing') {
+    timerSpan.textContent = formatTime(timerTimeLeft);
+    // Turn red in final 30 seconds
+    timerSpan.classList.toggle('timer-urgent', timerTimeLeft <= 30);
+  } else {
+    timerSpan.textContent = `${timerTimeLeft}s`;
+    timerSpan.classList.remove('timer-urgent');
+  }
+}
+
+function showBreakOverlay(itName, nextRound, countdown) {
+  if (!breakOverlay) return;
+  breakItName.textContent  = itName;
+  breakRoundNum.textContent = nextRound;
+  breakCountdown.textContent = countdown;
+  breakOverlay.classList.remove('hidden');
+}
+
+function hideBreakOverlay() {
+  if (breakOverlay) breakOverlay.classList.add('hidden');
+}
+
+function updateBreakCountdown(secs) {
+  if (breakCountdown) breakCountdown.textContent = secs;
+}
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
 function updateHUD() {
   const name = (itPlayerId && remotePlayers[itPlayerId])
     ? remotePlayers[itPlayerId].nickname || 'unknown'
@@ -81,7 +128,7 @@ function updateHUD() {
   itDisplaySpan.textContent = `IT: ${name}`;
 }
 
-// ── Socket event handlers ────────────────────────────────────────────────────
+// ── Socket event handlers ─────────────────────────────────────────────────────
 function onCurrentPlayers(data) {
   remotePlayers = data.players;
   itPlayerId    = data.itId;
@@ -102,15 +149,33 @@ function onCurrentPlayers(data) {
   if (playerCountSpan && data.playerCount != null)
     playerCountSpan.textContent = `${data.playerCount} online`;
 
+  if (data.timer) {
+    timerState    = data.timer.state;
+    timerTimeLeft = data.timer.timeLeft;
+    timerRound    = data.timer.roundNumber;
+    updateTimerHUD();
+  }
+
   updateHUD();
 }
 
 function onGameState(data) {
-  const { players, itId, playerCount } = data;
+  const { players, itId, playerCount, timer } = data;
   itPlayerId = itId;
 
   if (playerCountSpan && playerCount != null)
     playerCountSpan.textContent = `${playerCount} online`;
+
+  if (timer) {
+    timerState    = timer.state;
+    timerTimeLeft = timer.timeLeft;
+    timerRound    = timer.roundNumber;
+    updateTimerHUD();
+
+    if (timerState === 'break') {
+      updateBreakCountdown(timerTimeLeft);
+    }
+  }
 
   for (const id in players) {
     const p = players[id];
@@ -123,7 +188,6 @@ function onGameState(data) {
     }
   }
 
-  // Authoritative server position for local reconciliation
   if (localPlayerId && players[localPlayerId]) {
     serverPos.x = players[localPlayerId].x;
     serverPos.y = players[localPlayerId].y;
@@ -142,6 +206,24 @@ function onGameState(data) {
   }
 }
 
+function onRoundEnd(data) {
+  // data: { roundNumber, itNickname, breakDuration }
+  timerState = 'break';
+  showBreakOverlay(data.itNickname, data.roundNumber + 1, data.breakDuration);
+  addLog(`Round ${data.roundNumber} over — ${data.itNickname} was IT`);
+}
+
+function onRoundStart(data) {
+  // data: { roundNumber, itNickname }
+  timerState    = 'playing';
+  timerTimeLeft = 300;
+  timerRound    = data.roundNumber;
+  hideBreakOverlay();
+  showToast(`Round ${data.roundNumber} — ${data.itNickname} is IT!`, 2500);
+  addLog(`Round ${data.roundNumber} started`);
+  updateTimerHUD();
+}
+
 function onNewPlayer(pd) {
   remotePlayers[pd.id] = { ...pd, isIt: false, immune: false };
   playerTargets[pd.id] = { x: pd.x, y: pd.y };
@@ -152,19 +234,19 @@ function onPlayerDisconnected(id) {
   delete playerTargets[id];
 }
 
-// ── Movement (with client-side prediction) ───────────────────────────────────
+// ── Movement (client-side prediction) ────────────────────────────────────────
 function sendMovement() {
   if (!localPlayerId || !localPosReady) return;
+  if (timerState !== 'playing') return;   // frozen during break
 
   const move = {
     left:   keys.ArrowLeft  || keys.KeyA,
     right:  keys.ArrowRight || keys.KeyD,
     up:     keys.ArrowUp    || keys.KeyW,
     down:   keys.ArrowDown  || keys.KeyS,
-    sprint: keys.ShiftLeft  || keys.ShiftRight
+    sprint: keys.ShiftLeft  || keys.ShiftRight,
   };
 
-  // Mirror server movement locally
   const speed = move.sprint ? BASE_SPEED * SPRINT_MULT : BASE_SPEED;
   let dx = (move.right ? 1 : 0) - (move.left ? 1 : 0);
   let dy = (move.down  ? 1 : 0) - (move.up   ? 1 : 0);
@@ -173,14 +255,14 @@ function sendMovement() {
   const nx = Math.max(PLAYER_RADIUS, Math.min(CANVAS_W - PLAYER_RADIUS, localPos.x + dx * speed));
   const ny = Math.max(PLAYER_RADIUS, Math.min(CANVAS_H - PLAYER_RADIUS, localPos.y + dy * speed));
 
-  if      (!obstacleBlocked(nx, ny))       { localPos.x = nx; localPos.y = ny; }
+  if      (!obstacleBlocked(nx, ny))        { localPos.x = nx; localPos.y = ny; }
   else if (!obstacleBlocked(nx, localPos.y)) { localPos.x = nx; }
   else if (!obstacleBlocked(localPos.x, ny)) { localPos.y = ny; }
 
   socket.emit('move', move);
 }
 
-// ── Render ───────────────────────────────────────────────────────────────────
+// ── Render ────────────────────────────────────────────────────────────────────
 function lerp(a, b, t) { return a + (b - a) * t; }
 
 function drawObstacles() {
@@ -222,7 +304,6 @@ function draw() {
 
   drawObstacles();
 
-  // Reconcile local prediction with server
   if (localPlayerId && localPosReady) {
     const drift = Math.hypot(serverPos.x - localPos.x, serverPos.y - localPos.y);
     if (drift > 120) {
@@ -234,9 +315,9 @@ function draw() {
   }
 
   for (const id in remotePlayers) {
-    const player = remotePlayers[id];
-    const isLocal  = id === localPlayerId;
-    const isIt     = player.isIt;
+    const player  = remotePlayers[id];
+    const isLocal = id === localPlayerId;
+    const isIt    = player.isIt;
     const isImmune = player.immune;
 
     let drawX, drawY;
@@ -252,14 +333,11 @@ function draw() {
       drawY = player.y;
     }
 
-    // Immunity flicker
     if (isImmune) ctx.globalAlpha = (Math.sin(Date.now() / 70) > 0) ? 0.4 : 1.0;
 
-    // IT glow
     ctx.shadowColor = isIt ? '#ff5c3a' : 'transparent';
     ctx.shadowBlur  = isIt ? 16 : 0;
 
-    // Body
     ctx.beginPath();
     ctx.arc(drawX, drawY, PLAYER_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = player.color;
@@ -268,10 +346,9 @@ function draw() {
     ctx.lineWidth   = isIt ? 2.5 : 1.5;
     ctx.stroke();
 
-    ctx.shadowBlur   = 0;
-    ctx.globalAlpha  = 1;
+    ctx.shadowBlur  = 0;
+    ctx.globalAlpha = 1;
 
-    // "IT" label above player
     ctx.textAlign = 'center';
     if (isIt) {
       ctx.font      = 'bold 11px "DM Mono", monospace';
@@ -279,10 +356,11 @@ function draw() {
       ctx.fillText('IT', drawX, drawY - 17);
     }
 
-    // Nickname
     ctx.font      = '11px "DM Mono", monospace';
     ctx.fillStyle = isLocal ? '#c8f060' : 'rgba(210,210,210,0.75)';
-    let label = player.nickname ? (player.nickname.length > 12 ? player.nickname.slice(0, 10) + '..' : player.nickname) : 'anon';
+    let label = player.nickname
+      ? (player.nickname.length > 12 ? player.nickname.slice(0, 10) + '..' : player.nickname)
+      : 'anon';
     ctx.fillText(label, drawX, drawY - (isIt ? 28 : 22));
   }
 
@@ -290,7 +368,7 @@ function draw() {
   requestAnimationFrame(draw);
 }
 
-// ── Keyboard ─────────────────────────────────────────────────────────────────
+// ── Keyboard ──────────────────────────────────────────────────────────────────
 window.addEventListener('keydown', (e) => {
   if (document.activeElement === nicknameInput) return;
   if (keys.hasOwnProperty(e.code)) { keys[e.code] = true; e.preventDefault(); }
@@ -300,7 +378,7 @@ window.addEventListener('keyup', (e) => {
   if (keys.hasOwnProperty(e.code)) { keys[e.code] = false; e.preventDefault(); }
 });
 
-// ── Touch joystick ───────────────────────────────────────────────────────────
+// ── Touch joystick ────────────────────────────────────────────────────────────
 function initTouchControls() {
   if (!window.matchMedia('(pointer: coarse)').matches) return;
 
@@ -330,7 +408,7 @@ function initTouchControls() {
     const t  = e.touches[0];
     const dx = t.clientX - startX;
     const dy = t.clientY - startY;
-    const dist = Math.min(Math.hypot(dx, dy), MAX);
+    const dist  = Math.min(Math.hypot(dx, dy), MAX);
     const angle = Math.atan2(dy, dx);
     thumb.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`;
     keys.KeyA = dx < -DEAD;
@@ -345,7 +423,7 @@ function initTouchControls() {
     thumb.style.transform = 'translate(0,0)';
     keys.KeyA = keys.KeyD = keys.KeyW = keys.KeyS = false;
   };
-  document.addEventListener('touchend',   endTouch);
+  document.addEventListener('touchend',    endTouch);
   document.addEventListener('touchcancel', endTouch);
 
   sprintBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys.ShiftLeft = true;  }, { passive: false });
@@ -357,12 +435,14 @@ function initGame(nickname) {
   localNickname = nickname;
   socket = io();
 
-  socket.on('connect',           () => socket.emit('setNickname', localNickname));
-  socket.on('currentPlayers',    onCurrentPlayers);
-  socket.on('newPlayer',         onNewPlayer);
+  socket.on('connect',            () => socket.emit('setNickname', localNickname));
+  socket.on('currentPlayers',     onCurrentPlayers);
+  socket.on('newPlayer',          onNewPlayer);
   socket.on('playerDisconnected', onPlayerDisconnected);
-  socket.on('gameState',         onGameState);
-  socket.on('playerCount',       (n) => { if (playerCountSpan) playerCountSpan.textContent = `${n} online`; });
+  socket.on('gameState',          onGameState);
+  socket.on('roundEnd',           onRoundEnd);
+  socket.on('roundStart',         onRoundStart);
+  socket.on('playerCount',        (n) => { if (playerCountSpan) playerCountSpan.textContent = `${n} online`; });
   socket.on('itChanged', (data) => {
     const msg = data.taggerNickname
       ? `${data.taggerNickname} tagged ${data.newItNickname}`
