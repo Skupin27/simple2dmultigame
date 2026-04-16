@@ -10,7 +10,7 @@ const io     = socketIo(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const TICK_RATE        = 20;          // state broadcasts per second
+const TICK_RATE        = 100;          // state broadcasts per second
 const BASE_SPEED       = 10;
 const SPRINT_MULT      = 1.5;
 const CANVAS_W         = 1100;
