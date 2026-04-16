@@ -1,106 +1,150 @@
 // public/game.js
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+const ctx    = canvas.getContext('2d');
 
-// DOM elements
-const modal = document.getElementById('nicknameModal');
-const gameHud = document.getElementById('gameHud');
-const toastDiv = document.getElementById('toastMsg');
-const itDisplaySpan = document.getElementById('itDisplay');
-const nicknameInput = document.getElementById('nicknameInput');
-const joinBtn = document.getElementById('joinGameBtn');
+const modal          = document.getElementById('nicknameModal');
+const gameHud        = document.getElementById('gameHud');
+const toastDiv       = document.getElementById('toastMsg');
+const itDisplaySpan  = document.getElementById('itDisplay');
+const playerCountSpan = document.getElementById('playerCount');
+const nicknameInput  = document.getElementById('nicknameInput');
+const joinBtn        = document.getElementById('joinGameBtn');
 
-let socket = null;
+let socket        = null;
 let localPlayerId = null;
 let localNickname = '';
 
-// World state
-let remotePlayers = {};     // { id: { x, y, color, nickname, isIt } }
-let itPlayerId = null;
-
-// Smooth interpolation targets
+let remotePlayers = {};
 let playerTargets = {};
+let itPlayerId    = null;
 
-// Input tracking (movement + sprint)
+// ── Client-side prediction ───────────────────────────────────────────────────
+const BASE_SPEED    = 10;
+const SPRINT_MULT   = 1.5;
+const CANVAS_W      = 1100;
+const CANVAS_H      = 750;
+const PLAYER_RADIUS = 10;
+
+let localPos            = { x: 0, y: 0 };
+let serverPos           = { x: 0, y: 0 };
+let localPosReady       = false;
+
+// Must match server
+const OBSTACLES = [
+  { x: 180, y: 140, w: 130, h: 18 },
+  { x: 790, y: 140, w: 130, h: 18 },
+  { x: 490, y: 290, w: 18,  h: 160 },
+  { x: 180, y: 490, w: 130, h: 18 },
+  { x: 790, y: 490, w: 130, h: 18 },
+  { x: 340, y: 600, w: 18,  h: 100 },
+  { x: 742, y: 600, w: 18,  h: 100 },
+];
+
+function obstacleBlocked(px, py) {
+  for (const o of OBSTACLES) {
+    const cx = Math.max(o.x, Math.min(px, o.x + o.w));
+    const cy = Math.max(o.y, Math.min(py, o.y + o.h));
+    if (Math.hypot(px - cx, py - cy) < PLAYER_RADIUS) return true;
+  }
+  return false;
+}
+
+// ── Tag log ──────────────────────────────────────────────────────────────────
+const tagLog    = [];
+const LOG_MAX   = 4;
+const LOG_TTL   = 6000;
+
+function addLog(text) {
+  tagLog.unshift({ text, ts: Date.now() });
+  if (tagLog.length > LOG_MAX) tagLog.pop();
+}
+
+// ── Keys ─────────────────────────────────────────────────────────────────────
 const keys = {
   ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false,
   KeyA: false, KeyD: false, KeyW: false, KeyS: false,
   ShiftLeft: false, ShiftRight: false
 };
 
-let moveInterval = null;
-let animationId = null;
-
-// Helper: toast message
-function showToast(msg, duration = 2000) {
+// ── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg, ms = 2000) {
   toastDiv.textContent = msg;
   toastDiv.classList.remove('hidden');
-  setTimeout(() => toastDiv.classList.add('hidden'), duration);
+  setTimeout(() => toastDiv.classList.add('hidden'), ms);
 }
 
-// Update HUD with current IT nickname
+// ── HUD ──────────────────────────────────────────────────────────────────────
 function updateHUD() {
-  if (!itPlayerId || !remotePlayers[itPlayerId]) {
-    itDisplaySpan.textContent = `🎯 IT: nobody`;
-    return;
-  }
-  const itName = remotePlayers[itPlayerId].nickname || 'unknown';
-  itDisplaySpan.textContent = `🎯 IT: ${itName}`;
+  const name = (itPlayerId && remotePlayers[itPlayerId])
+    ? remotePlayers[itPlayerId].nickname || 'unknown'
+    : 'nobody';
+  itDisplaySpan.textContent = `IT: ${name}`;
 }
 
-// Game state from server (players + IT id)
+// ── Socket event handlers ────────────────────────────────────────────────────
+function onCurrentPlayers(data) {
+  remotePlayers = data.players;
+  itPlayerId    = data.itId;
+  localPlayerId = socket.id;
+
+  for (const id in remotePlayers) {
+    playerTargets[id] = { x: remotePlayers[id].x, y: remotePlayers[id].y };
+  }
+
+  if (remotePlayers[localPlayerId]) {
+    localPos.x  = remotePlayers[localPlayerId].x;
+    localPos.y  = remotePlayers[localPlayerId].y;
+    serverPos.x = localPos.x;
+    serverPos.y = localPos.y;
+    localPosReady = true;
+  }
+
+  if (playerCountSpan && data.playerCount != null)
+    playerCountSpan.textContent = `${data.playerCount} online`;
+
+  updateHUD();
+}
+
 function onGameState(data) {
-  const { players, itId } = data;
+  const { players, itId, playerCount } = data;
   itPlayerId = itId;
 
-  for (let id in players) {
+  if (playerCountSpan && playerCount != null)
+    playerCountSpan.textContent = `${playerCount} online`;
+
+  for (const id in players) {
     const p = players[id];
     if (!remotePlayers[id]) {
-      remotePlayers[id] = { ...p };
-      playerTargets[id] = { x: p.x, y: p.y };
+      remotePlayers[id]  = { ...p };
+      playerTargets[id]  = { x: p.x, y: p.y };
     } else {
-      remotePlayers[id].nickname = p.nickname;
-      remotePlayers[id].color = p.color;
-      remotePlayers[id].isIt = (id === itId);
-      if (playerTargets[id]) {
-        playerTargets[id].x = p.x;
-        playerTargets[id].y = p.y;
-      } else {
-        playerTargets[id] = { x: p.x, y: p.y };
-      }
+      Object.assign(remotePlayers[id], { nickname: p.nickname, color: p.color, isIt: p.isIt, immune: p.immune });
+      playerTargets[id] = { x: p.x, y: p.y };
     }
   }
 
-  // Cleanup disconnected players
-  for (let id in remotePlayers) {
-    if (!players[id]) {
-      delete remotePlayers[id];
-      delete playerTargets[id];
-    }
+  // Authoritative server position for local reconciliation
+  if (localPlayerId && players[localPlayerId]) {
+    serverPos.x = players[localPlayerId].x;
+    serverPos.y = players[localPlayerId].y;
+  }
+
+  for (const id in remotePlayers) {
+    if (!players[id]) { delete remotePlayers[id]; delete playerTargets[id]; }
   }
 
   updateHUD();
 
-  // Notify local player if they become IT
   if (localPlayerId && itPlayerId === localPlayerId) {
-    if (!window._itFlagNotified) {
-      showToast("🔥 YOU ARE IT! Chase & tag others! 🔥", 2000);
-      window._itFlagNotified = true;
-    }
+    if (!window._wasIt) { showToast('YOU ARE IT — go tag someone!', 2200); window._wasIt = true; }
   } else {
-    window._itFlagNotified = false;
+    window._wasIt = false;
   }
 }
 
-function onNewPlayer(playerData) {
-  remotePlayers[playerData.id] = {
-    x: playerData.x,
-    y: playerData.y,
-    color: playerData.color,
-    nickname: playerData.nickname,
-    isIt: false
-  };
-  playerTargets[playerData.id] = { x: playerData.x, y: playerData.y };
+function onNewPlayer(pd) {
+  remotePlayers[pd.id] = { ...pd, isIt: false, immune: false };
+  playerTargets[pd.id] = { x: pd.x, y: pd.y };
 }
 
 function onPlayerDisconnected(id) {
@@ -108,189 +152,236 @@ function onPlayerDisconnected(id) {
   delete playerTargets[id];
 }
 
-function onCurrentPlayers(data) {
-  remotePlayers = data.players;
-  itPlayerId = data.itId;
-  localPlayerId = socket.id;
-
-  for (let id in remotePlayers) {
-    playerTargets[id] = { x: remotePlayers[id].x, y: remotePlayers[id].y };
-  }
-  updateHUD();
-}
-
-// ----- SEND MOVEMENT + SPRINT -----
+// ── Movement (with client-side prediction) ───────────────────────────────────
 function sendMovement() {
-  if (!localPlayerId) return;
+  if (!localPlayerId || !localPosReady) return;
 
   const move = {
-    left: keys.ArrowLeft || keys.KeyA,
-    right: keys.ArrowRight || keys.KeyD,
-    up: keys.ArrowUp || keys.KeyW,
-    down: keys.ArrowDown || keys.KeyS,
-    sprint: keys.ShiftLeft || keys.ShiftRight
+    left:   keys.ArrowLeft  || keys.KeyA,
+    right:  keys.ArrowRight || keys.KeyD,
+    up:     keys.ArrowUp    || keys.KeyW,
+    down:   keys.ArrowDown  || keys.KeyS,
+    sprint: keys.ShiftLeft  || keys.ShiftRight
   };
+
+  // Mirror server movement locally
+  const speed = move.sprint ? BASE_SPEED * SPRINT_MULT : BASE_SPEED;
+  let dx = (move.right ? 1 : 0) - (move.left ? 1 : 0);
+  let dy = (move.down  ? 1 : 0) - (move.up   ? 1 : 0);
+  if (dx || dy) { const l = Math.hypot(dx, dy); dx /= l; dy /= l; }
+
+  const nx = Math.max(PLAYER_RADIUS, Math.min(CANVAS_W - PLAYER_RADIUS, localPos.x + dx * speed));
+  const ny = Math.max(PLAYER_RADIUS, Math.min(CANVAS_H - PLAYER_RADIUS, localPos.y + dy * speed));
+
+  if      (!obstacleBlocked(nx, ny))       { localPos.x = nx; localPos.y = ny; }
+  else if (!obstacleBlocked(nx, localPos.y)) { localPos.x = nx; }
+  else if (!obstacleBlocked(localPos.x, ny)) { localPos.y = ny; }
+
   socket.emit('move', move);
 }
 
-// ----- RENDERING with interpolation + TAG visuals -----
-function lerp(start, end, factor) {
-  return start + (end - start) * factor;
+// ── Render ───────────────────────────────────────────────────────────────────
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function drawObstacles() {
+  for (const o of OBSTACLES) {
+    ctx.fillStyle   = '#1a2020';
+    ctx.strokeStyle = '#263030';
+    ctx.lineWidth   = 1;
+    ctx.fillRect(o.x, o.y, o.w, o.h);
+    ctx.strokeRect(o.x, o.y, o.w, o.h);
+  }
+}
+
+function drawTagLog() {
+  const now = Date.now();
+  ctx.font      = '11px "DM Mono", monospace';
+  ctx.textAlign = 'left';
+  let y = CANVAS_H - 14;
+  for (const entry of tagLog) {
+    const alpha = Math.max(0, 1 - (now - entry.ts) / LOG_TTL);
+    if (alpha <= 0) continue;
+    ctx.fillStyle = `rgba(160, 190, 160, ${alpha * 0.65})`;
+    ctx.fillText(entry.text, 14, y);
+    y -= 17;
+  }
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-  // Draw grid effect (light lines)
-  ctx.strokeStyle = '#1e1e1e';
-  ctx.lineWidth = 0.5;
-  for (let i = 0; i < canvas.width; i += 50) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i, canvas.height);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, i);
-    ctx.lineTo(canvas.width, i);
-    ctx.stroke();
+  // Grid
+  ctx.strokeStyle = '#161616';
+  ctx.lineWidth   = 0.5;
+  for (let i = 0; i < CANVAS_W; i += 50) {
+    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, CANVAS_H); ctx.stroke();
+  }
+  for (let j = 0; j < CANVAS_H; j += 50) {
+    ctx.beginPath(); ctx.moveTo(0, j); ctx.lineTo(CANVAS_W, j); ctx.stroke();
   }
 
-  for (let id in remotePlayers) {
-    const player = remotePlayers[id];
-    let drawX = player.x;
-    let drawY = player.y;
+  drawObstacles();
 
-    // Interpolate remote players (smooth follow)
-    if (playerTargets[id] && id !== localPlayerId) {
-      const target = playerTargets[id];
-      player.x = lerp(player.x, target.x, 0.28);
-      player.y = lerp(player.y, target.y, 0.28);
+  // Reconcile local prediction with server
+  if (localPlayerId && localPosReady) {
+    const drift = Math.hypot(serverPos.x - localPos.x, serverPos.y - localPos.y);
+    if (drift > 120) {
+      localPos.x = serverPos.x; localPos.y = serverPos.y;
+    } else {
+      localPos.x = lerp(localPos.x, serverPos.x, 0.07);
+      localPos.y = lerp(localPos.y, serverPos.y, 0.07);
+    }
+  }
+
+  for (const id in remotePlayers) {
+    const player = remotePlayers[id];
+    const isLocal  = id === localPlayerId;
+    const isIt     = player.isIt;
+    const isImmune = player.immune;
+
+    let drawX, drawY;
+    if (isLocal) {
+      drawX = localPos.x;
+      drawY = localPos.y;
+    } else {
+      if (playerTargets[id]) {
+        player.x = lerp(player.x, playerTargets[id].x, 0.28);
+        player.y = lerp(player.y, playerTargets[id].y, 0.28);
+      }
       drawX = player.x;
       drawY = player.y;
-    } else if (id === localPlayerId && playerTargets[id]) {
-      // Local: snap to server position (server authoritative)
-      drawX = playerTargets[id].x;
-      drawY = playerTargets[id].y;
     }
 
-    // Draw shadow
-    ctx.shadowColor = 'rgba(0,0,0,0.3)';
-    ctx.shadowBlur = 8;
+    // Immunity flicker
+    if (isImmune) ctx.globalAlpha = (Math.sin(Date.now() / 70) > 0) ? 0.4 : 1.0;
 
-    // Glow if IT
-    if (player.isIt) {
-      ctx.shadowColor = '#ff884d';
-      ctx.shadowBlur = 18;
-    }
+    // IT glow
+    ctx.shadowColor = isIt ? '#ff5c3a' : 'transparent';
+    ctx.shadowBlur  = isIt ? 16 : 0;
 
-    // Circle body
+    // Body
     ctx.beginPath();
-    ctx.arc(drawX, drawY, 10, 0, Math.PI * 2);
+    ctx.arc(drawX, drawY, PLAYER_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = player.color;
     ctx.fill();
-    ctx.strokeStyle = player.isIt ? '#ffaa33' : '#ffffff';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = isIt ? '#ff5c3a' : 'rgba(255,255,255,0.25)';
+    ctx.lineWidth   = isIt ? 2.5 : 1.5;
     ctx.stroke();
 
-    // IT crown / mark
-    if (player.isIt) {
-      ctx.font = 'bold 22px "Segoe UI"';
-      ctx.fillStyle = '#FFD966';
-      ctx.shadowBlur = 8;
-      ctx.fillText('👑', drawX - 12, drawY - 22);
-    }
+    ctx.shadowBlur   = 0;
+    ctx.globalAlpha  = 1;
 
-    // Nickname label
-    ctx.font = 'bold 14px "Segoe UI"';
-    ctx.fillStyle = '#f0f3f8';
-    ctx.shadowBlur = 3;
-    ctx.shadowColor = '#000000aa';
+    // "IT" label above player
     ctx.textAlign = 'center';
-    let displayName = player.nickname ? (player.nickname.length > 12 ? player.nickname.slice(0, 10) + '..' : player.nickname) : 'anon';
-    if (id === localPlayerId) displayName = `✨ ${displayName} ✨`;
-    ctx.fillText(displayName, drawX, drawY - 28);
-
-    // Sprint effect particles (local only hint)
-    if (id === localPlayerId && (keys.ShiftLeft || keys.ShiftRight)) {
-      ctx.beginPath();
-      ctx.arc(drawX - 8, drawY + 4, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffaa55aa';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(drawX + 10, drawY + 2, 3, 0, Math.PI * 2);
-      ctx.fill();
+    if (isIt) {
+      ctx.font      = 'bold 11px "DM Mono", monospace';
+      ctx.fillStyle = '#ff5c3a';
+      ctx.fillText('IT', drawX, drawY - 17);
     }
+
+    // Nickname
+    ctx.font      = '11px "DM Mono", monospace';
+    ctx.fillStyle = isLocal ? '#c8f060' : 'rgba(210,210,210,0.75)';
+    let label = player.nickname ? (player.nickname.length > 12 ? player.nickname.slice(0, 10) + '..' : player.nickname) : 'anon';
+    ctx.fillText(label, drawX, drawY - (isIt ? 28 : 22));
   }
 
-  ctx.shadowBlur = 0;
+  drawTagLog();
   requestAnimationFrame(draw);
 }
 
-// ----- KEYBOARD HANDLERS -----
-function handleKeyDown(e) {
+// ── Keyboard ─────────────────────────────────────────────────────────────────
+window.addEventListener('keydown', (e) => {
   if (document.activeElement === nicknameInput) return;
-  const code = e.code;
-  if (keys.hasOwnProperty(code)) {
-    keys[code] = true;
+  if (keys.hasOwnProperty(e.code)) { keys[e.code] = true; e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => {
+  if (document.activeElement === nicknameInput) return;
+  if (keys.hasOwnProperty(e.code)) { keys[e.code] = false; e.preventDefault(); }
+});
+
+// ── Touch joystick ───────────────────────────────────────────────────────────
+function initTouchControls() {
+  if (!window.matchMedia('(pointer: coarse)').matches) return;
+
+  const joystick  = document.getElementById('joystick');
+  const thumb     = document.getElementById('joystickThumb');
+  const sprintBtn = document.getElementById('sprintBtn');
+  if (!joystick) return;
+
+  joystick.style.display  = 'block';
+  sprintBtn.style.display = 'flex';
+
+  const MAX = 38;
+  const DEAD = 8;
+  let startX = 0, startY = 0, active = false;
+
+  joystick.addEventListener('touchstart', (e) => {
     e.preventDefault();
-  }
+    active = true;
+    const r = joystick.getBoundingClientRect();
+    startX = r.left + r.width  / 2;
+    startY = r.top  + r.height / 2;
+  }, { passive: false });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!active) return;
+    e.preventDefault();
+    const t  = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    const dist = Math.min(Math.hypot(dx, dy), MAX);
+    const angle = Math.atan2(dy, dx);
+    thumb.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`;
+    keys.KeyA = dx < -DEAD;
+    keys.KeyD = dx >  DEAD;
+    keys.KeyW = dy < -DEAD;
+    keys.KeyS = dy >  DEAD;
+  }, { passive: false });
+
+  const endTouch = () => {
+    if (!active) return;
+    active = false;
+    thumb.style.transform = 'translate(0,0)';
+    keys.KeyA = keys.KeyD = keys.KeyW = keys.KeyS = false;
+  };
+  document.addEventListener('touchend',   endTouch);
+  document.addEventListener('touchcancel', endTouch);
+
+  sprintBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys.ShiftLeft = true;  }, { passive: false });
+  sprintBtn.addEventListener('touchend',   (e) => { e.preventDefault(); keys.ShiftLeft = false; }, { passive: false });
 }
 
-function handleKeyUp(e) {
-  if (document.activeElement === nicknameInput) return;
-  const code = e.code;
-  if (keys.hasOwnProperty(code)) {
-    keys[code] = false;
-    e.preventDefault();
-  }
-}
-
-// ----- INITIALIZE SOCKET & GAME AFTER NICKNAME -----
+// ── Init ──────────────────────────────────────────────────────────────────────
 function initGame(nickname) {
   localNickname = nickname;
   socket = io();
 
-  socket.on('connect', () => {
-    socket.emit('setNickname', localNickname);
-  });
-
-  socket.on('currentPlayers', onCurrentPlayers);
-  socket.on('newPlayer', onNewPlayer);
+  socket.on('connect',           () => socket.emit('setNickname', localNickname));
+  socket.on('currentPlayers',    onCurrentPlayers);
+  socket.on('newPlayer',         onNewPlayer);
   socket.on('playerDisconnected', onPlayerDisconnected);
-  socket.on('gameState', onGameState);
+  socket.on('gameState',         onGameState);
+  socket.on('playerCount',       (n) => { if (playerCountSpan) playerCountSpan.textContent = `${n} online`; });
   socket.on('itChanged', (data) => {
-    showToast(`${data.newItNickname} is now IT!`, 1500);
+    const msg = data.taggerNickname
+      ? `${data.taggerNickname} tagged ${data.newItNickname}`
+      : `${data.newItNickname} is now IT`;
+    showToast(msg, 1800);
+    addLog(msg);
   });
 
-  // Start sending movement 30 times/sec
-  if (moveInterval) clearInterval(moveInterval);
-  moveInterval = setInterval(() => sendMovement(), 1000 / 30);
+  setInterval(sendMovement, 1000 / 30);
+  requestAnimationFrame(draw);
 
-  // Start render loop
-  if (animationId) cancelAnimationFrame(animationId);
-  animationId = requestAnimationFrame(draw);
-
-  // UI transition
   modal.classList.add('hidden');
   gameHud.classList.remove('hidden');
+  initTouchControls();
 }
 
-// ----- EVENT LISTENERS FOR MODAL -----
-joinBtn.addEventListener('click', () => {
-  let nickname = nicknameInput.value.trim();
-  if (nickname === '') nickname = `Runner_${Math.floor(Math.random() * 1000)}`;
-  if (nickname.length > 14) nickname = nickname.slice(0, 14);
-  initGame(nickname);
-});
-
-nicknameInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    let nickname = nicknameInput.value.trim();
-    if (nickname === '') nickname = `Runner_${Math.floor(Math.random() * 1000)}`;
-    if (nickname.length > 14) nickname = nickname.slice(0, 14);
-    initGame(nickname);
-  }
-});
-
-window.addEventListener('keydown', handleKeyDown);
-window.addEventListener('keyup', handleKeyUp);
+const startGame = () => {
+  let n = nicknameInput.value.trim() || `Runner_${Math.floor(Math.random() * 1000)}`;
+  initGame(n.slice(0, 14));
+};
+joinBtn.addEventListener('click', startGame);
+nicknameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') startGame(); });
