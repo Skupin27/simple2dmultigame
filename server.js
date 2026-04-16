@@ -21,24 +21,61 @@ const TAG_IMMUNITY_MS  = 2000;
 const ROUND_DURATION   = 300;   // seconds (5 minutes)
 const BREAK_DURATION   = 10;    // seconds between rounds
 
-const OBSTACLES = [
-  { x: 180, y: 140, w: 130, h: 18 },
-  { x: 790, y: 140, w: 130, h: 18 },
-  { x: 490, y: 290, w: 18,  h: 160 },
-  { x: 180, y: 490, w: 130, h: 18 },
-  { x: 790, y: 490, w: 130, h: 18 },
-  { x: 340, y: 600, w: 18,  h: 100 },
-  { x: 742, y: 600, w: 18,  h: 100 },
-];
+function generateObstacles() {
+  const walls   = [];
+  const count   = 5 + Math.floor(Math.random() * 4); // 5–8 walls
+  const margin  = 90;
+  const minGap  = 70;
+  const maxTries = count * 15;
+
+  for (let attempt = 0; attempt < maxTries && walls.length < count; attempt++) {
+    const isHoriz = Math.random() > 0.38;
+    const w = isHoriz ? 80  + Math.floor(Math.random() * 120) : 16 + Math.floor(Math.random() * 6);
+    const h = isHoriz ? 16  + Math.floor(Math.random() * 6)   : 80 + Math.floor(Math.random() * 120);
+    const x = margin  + Math.floor(Math.random() * (CANVAS_W - 2 * margin - w));
+    const y = margin  + Math.floor(Math.random() * (CANVAS_H - 2 * margin - h));
+
+    let ok = true;
+    for (const o of walls) {
+      if (x < o.x + o.w + minGap && x + w + minGap > o.x &&
+          y < o.y + o.h + minGap && y + h + minGap > o.y) {
+        ok = false; break;
+      }
+    }
+    if (ok) walls.push({ x, y, w, h });
+  }
+  return walls;
+}
+
+let obstacles = generateObstacles();
 
 function obstacleBlocked(px, py) {
-  for (const o of OBSTACLES) {
+  for (const o of obstacles) {
     const cx = Math.max(o.x, Math.min(px, o.x + o.w));
     const cy = Math.max(o.y, Math.min(py, o.y + o.h));
     if (Math.hypot(px - cx, py - cy) < PLAYER_RADIUS) return true;
   }
   return false;
 }
+
+// Shuffle walls every 60 seconds; push any trapped player to safety
+setInterval(() => {
+  obstacles = generateObstacles();
+  // Nudge any player now inside a wall to a safe spot
+  for (const id in players) {
+    const p = players[id];
+    if (obstacleBlocked(p.x, p.y)) {
+      let sx, sy, attempts = 0;
+      do {
+        sx = Math.random() * (CANVAS_W - 100) + 50;
+        sy = Math.random() * (CANVAS_H - 100) + 50;
+      } while (obstacleBlocked(sx, sy) && ++attempts < 30);
+      p.x = sx; p.y = sy;
+    }
+  }
+  io.emit('wallsUpdate', { obstacles });
+  console.log(`🧱 Walls shuffled (${obstacles.length} walls)`);
+}, 60_000);
 
 let players    = {};
 let itPlayerId = null;
@@ -198,6 +235,7 @@ io.on('connection', (socket) => {
     socket.emit('currentPlayers', {
       players: init, itId: itPlayerId,
       playerCount: Object.keys(players).length,
+      obstacles,
       timer: {
         state:    roundState,
         timeLeft: roundState === 'playing' ? roundTimeLeft : breakTimeLeft,
