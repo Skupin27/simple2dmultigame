@@ -1,194 +1,171 @@
 // server.js
 const express = require('express');
-const http = require('http');
+const http    = require('http');
 const socketIo = require('socket.io');
-const path = require('path');
+const path    = require('path');
 
-const app = express();
+const app    = express();
 const server = http.createServer(app);
-const io = socketIo(server, { cors: { origin: '*' } });
+const io     = socketIo(server, { cors: { origin: '*' } });
 
-// Serve static files (HTML, CSS, JS)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Game constants
-const TICK_RATE = 200;          // 100 updates per second (tag detection)
-const BASE_SPEED = 10;
-const SPRINT_MULTIPLIER = 1.5;
-const CANVAS_W = 1100;
-const CANVAS_H = 750;
-const PLAYER_RADIUS = 10;
+const TICK_RATE        = 20;          // state broadcasts per second
+const BASE_SPEED       = 10;
+const SPRINT_MULT      = 1.5;
+const CANVAS_W         = 1100;
+const CANVAS_H         = 750;
+const PLAYER_RADIUS    = 10;
+const TAG_IMMUNITY_MS  = 2000;        // grace period after losing IT status
 
-let players = {};      // id -> { x, y, color, nickname, isIt, sprinting }
-let itPlayerId = null;
+// Must match client
+const OBSTACLES = [
+  { x: 180, y: 140, w: 130, h: 18 },
+  { x: 790, y: 140, w: 130, h: 18 },
+  { x: 490, y: 290, w: 18,  h: 160 },
+  { x: 180, y: 490, w: 130, h: 18 },
+  { x: 790, y: 490, w: 130, h: 18 },
+  { x: 340, y: 600, w: 18,  h: 100 },
+  { x: 742, y: 600, w: 18,  h: 100 },
+];
 
-// Helper: assign random IT if none exists or IT disconnects
-function assignRandomIt() {
-  const playerIds = Object.keys(players);
-  if (playerIds.length === 0) {
-    itPlayerId = null;
-    return;
+function obstacleBlocked(px, py) {
+  for (const o of OBSTACLES) {
+    const cx = Math.max(o.x, Math.min(px, o.x + o.w));
+    const cy = Math.max(o.y, Math.min(py, o.y + o.h));
+    if (Math.hypot(px - cx, py - cy) < PLAYER_RADIUS) return true;
   }
-  if (itPlayerId && players[itPlayerId]) return; // already valid IT
-  const randomId = playerIds[Math.floor(Math.random() * playerIds.length)];
-  itPlayerId = randomId;
-  if (players[randomId]) players[randomId].isIt = true;
+  return false;
 }
 
-// Tag logic: check distance between IT and every other player
-function checkTagCollisions() {
-  if (!itPlayerId || !players[itPlayerId]) return false;
-  const it = players[itPlayerId];
-  let taggedSomeone = false;
+let players    = {};
+let itPlayerId = null;
 
-  for (let id in players) {
+function assignIt(excludeId) {
+  const ids = Object.keys(players).filter(id => id !== excludeId);
+  if (ids.length === 0) { itPlayerId = null; return; }
+  const newIt = ids[Math.floor(Math.random() * ids.length)];
+  itPlayerId = newIt;
+  players[newIt].isIt = true;
+}
+
+function checkTagCollisions() {
+  if (!itPlayerId || !players[itPlayerId]) return;
+  const it  = players[itPlayerId];
+  const now = Date.now();
+
+  for (const id in players) {
     if (id === itPlayerId) continue;
     const other = players[id];
-    const dx = it.x - other.x;
-    const dy = it.y - other.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < PLAYER_RADIUS * 1.8) {
-      // TAG! Transfer IT status
+    if (now < (other.immuneUntil || 0)) continue;  // immune — skip
+    const dist = Math.hypot(it.x - other.x, it.y - other.y);
+    if (dist < PLAYER_RADIUS * 1.9) {
+      const taggerName = it.nickname;
       players[itPlayerId].isIt = false;
-      players[id].isIt = true;
-      itPlayerId = id;
-      taggedSomeone = true;
-      
-      // Broadcast IT change message
-      io.emit('itChanged', { newItNickname: players[id].nickname || 'someone' });
+      players[itPlayerId].immuneUntil = now + TAG_IMMUNITY_MS;  // old IT gets grace
+      other.isIt   = true;
+      itPlayerId   = id;
+      io.emit('itChanged', { newItNickname: other.nickname, taggerNickname: taggerName });
       break;
     }
   }
-  return taggedSomeone;
 }
 
-// Game loop: move players? Actually movement happens via 'move' events, but we apply speed there.
-// However collision must be checked on each tick (server authoritative)
 setInterval(() => {
   if (Object.keys(players).length === 0) return;
-  
-  // First check tag collisions
-  const tagged = checkTagCollisions();
-  
-  // Prepare game state snapshot to broadcast
-  const snapshot = {
-    players: {},
-    itId: itPlayerId
-  };
-  for (let id in players) {
+  checkTagCollisions();
+
+  const now      = Date.now();
+  const snapshot = { players: {}, itId: itPlayerId, playerCount: Object.keys(players).length };
+  for (const id in players) {
+    const p = players[id];
     snapshot.players[id] = {
-      x: players[id].x,
-      y: players[id].y,
-      color: players[id].color,
-      nickname: players[id].nickname,
-      isIt: players[id].isIt
+      x: p.x, y: p.y, color: p.color,
+      nickname: p.nickname, isIt: p.isIt,
+      immune: now < (p.immuneUntil || 0)
     };
   }
   io.emit('gameState', snapshot);
 }, 1000 / TICK_RATE);
 
-// Socket handlers
 io.on('connection', (socket) => {
-  console.log(`🟢 Player connected: ${socket.id}`);
+  console.log(`🟢 connected: ${socket.id}`);
+  let currentNickname = 'anon';
 
-  let currentNickname = 'anonymous';
+  socket.on('setNickname', (raw) => {
+    currentNickname = String(raw).slice(0, 14);
 
-  socket.on('setNickname', (nickname) => {
-    currentNickname = nickname.slice(0, 14);
-    // Spawn player at random safe position
-    const spawnX = Math.random() * (CANVAS_W - 100) + 50;
-    const spawnY = Math.random() * (CANVAS_H - 100) + 50;
-    const hue = Math.random() * 360;
-    const color = `hsl(${hue}, 75%, 65%)`;
+    // Spawn away from obstacles
+    let spawnX, spawnY, attempts = 0;
+    do {
+      spawnX = Math.random() * (CANVAS_W - 100) + 50;
+      spawnY = Math.random() * (CANVAS_H - 100) + 50;
+    } while (obstacleBlocked(spawnX, spawnY) && ++attempts < 20);
 
     players[socket.id] = {
-      x: spawnX,
-      y: spawnY,
-      color: color,
+      x: spawnX, y: spawnY,
+      color: `hsl(${Math.random() * 360}, 70%, 65%)`,
       nickname: currentNickname,
-      isIt: false,
-      sprinting: false
+      isIt: false, sprinting: false, immuneUntil: 0
     };
 
-    // If no IT exists, assign first player as IT
-    if (itPlayerId === null || !players[itPlayerId]) {
+    if (!itPlayerId || !players[itPlayerId]) {
       itPlayerId = socket.id;
       players[socket.id].isIt = true;
     }
 
-    // Send current game state to new player
-    const initialPlayers = {};
-    for (let id in players) {
-      initialPlayers[id] = {
-        x: players[id].x,
-        y: players[id].y,
-        color: players[id].color,
-        nickname: players[id].nickname,
-        isIt: players[id].isIt
-      };
+    // Send current state to new player
+    const init = {};
+    const now  = Date.now();
+    for (const id in players) {
+      const p = players[id];
+      init[id] = { x: p.x, y: p.y, color: p.color, nickname: p.nickname, isIt: p.isIt, immune: now < (p.immuneUntil || 0) };
     }
-    socket.emit('currentPlayers', { players: initialPlayers, itId: itPlayerId });
-
-    // Notify others about new player
-    socket.broadcast.emit('newPlayer', {
-      id: socket.id,
-      x: players[socket.id].x,
-      y: players[socket.id].y,
-      color: players[socket.id].color,
-      nickname: players[socket.id].nickname
-    });
-
-    console.log(`🏷️ ${currentNickname} (${socket.id}) joined. IT: ${itPlayerId}`);
+    socket.emit('currentPlayers', { players: init, itId: itPlayerId, playerCount: Object.keys(players).length });
+    socket.broadcast.emit('newPlayer', { id: socket.id, ...players[socket.id] });
+    io.emit('playerCount', Object.keys(players).length);
+    console.log(`🏷️  ${currentNickname} joined. Total: ${Object.keys(players).length}`);
   });
 
-  // Movement with sprint
   socket.on('move', (data) => {
-    const player = players[socket.id];
-    if (!player) return;
+    const p = players[socket.id];
+    if (!p) return;
 
-    const speed = (data.sprint ? BASE_SPEED * SPRINT_MULTIPLIER : BASE_SPEED);
-    let dx = 0, dy = 0;
-    if (data.left) dx = -1;
-    if (data.right) dx = 1;
-    if (data.up) dy = -1;
-    if (data.down) dy = 1;
+    const speed = (data.sprint ? BASE_SPEED * SPRINT_MULT : BASE_SPEED);
+    let dx = (data.right ? 1 : 0) - (data.left ? 1 : 0);
+    let dy = (data.down  ? 1 : 0) - (data.up   ? 1 : 0);
+    if (dx || dy) { const l = Math.hypot(dx, dy); dx /= l; dy /= l; }
 
-    if (dx !== 0 || dy !== 0) {
-      const len = Math.hypot(dx, dy);
-      dx /= len;
-      dy /= len;
-    }
-    player.x += dx * speed;
-    player.y += dy * speed;
+    const nx = Math.max(PLAYER_RADIUS, Math.min(CANVAS_W - PLAYER_RADIUS, p.x + dx * speed));
+    const ny = Math.max(PLAYER_RADIUS, Math.min(CANVAS_H - PLAYER_RADIUS, p.y + dy * speed));
 
-    // Boundaries with padding
-    player.x = Math.max(PLAYER_RADIUS, Math.min(CANVAS_W - PLAYER_RADIUS, player.x));
-    player.y = Math.max(PLAYER_RADIUS, Math.min(CANVAS_H - PLAYER_RADIUS, player.y));
-    player.sprinting = data.sprint || false;
+    // Slide collision against obstacles
+    if      (!obstacleBlocked(nx, ny)) { p.x = nx; p.y = ny; }
+    else if (!obstacleBlocked(nx, p.y)) { p.x = nx; }
+    else if (!obstacleBlocked(p.x, ny)) { p.y = ny; }
+
+    p.sprinting = !!data.sprint;
   });
 
   socket.on('disconnect', () => {
-    console.log(`🔴 Player disconnected: ${socket.id} (${currentNickname})`);
-    const wasIt = (itPlayerId === socket.id);
+    console.log(`🔴 ${currentNickname} left`);
+    const wasIt = itPlayerId === socket.id;
     delete players[socket.id];
-
     if (wasIt) {
-      // Reassign IT to a random remaining player
-      const remainingIds = Object.keys(players);
-      if (remainingIds.length > 0) {
-        const newIt = remainingIds[Math.floor(Math.random() * remainingIds.length)];
+      const ids = Object.keys(players);
+      if (ids.length > 0) {
+        const newIt = ids[Math.floor(Math.random() * ids.length)];
         itPlayerId = newIt;
         players[newIt].isIt = true;
-        io.emit('itChanged', { newItNickname: players[newIt].nickname });
+        io.emit('itChanged', { newItNickname: players[newIt].nickname, taggerNickname: null });
       } else {
         itPlayerId = null;
       }
     }
     io.emit('playerDisconnected', socket.id);
+    io.emit('playerCount', Object.keys(players).length);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🎮 Tag It server running on http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`🎮 Tag It → http://localhost:${PORT}`));
