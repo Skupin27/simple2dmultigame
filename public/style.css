@@ -1,4 +1,6 @@
 /* public/style.css */
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;600&display=swap');
+
 * {
   margin: 0;
   padding: 0;
@@ -7,191 +9,187 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+:root {
+  --bg:      #0e0e0e;
+  --surface: #161616;
+  --border:  #2a2a2a;
+  --text:    #e8e8e8;
+  --muted:   #666;
+  --accent:  #c8f060;
+  --danger:  #ff5c3a;
+}
+
 body {
-  background: radial-gradient(circle at 20% 30%, #0a0f1e, #03060c);
+  background: var(--bg);
   min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  font-family: 'Segoe UI', 'Poppins', system-ui, -apple-system, sans-serif;
+  font-family: 'DM Sans', sans-serif;
   overflow: hidden;
+  color: var(--text);
 }
 
 /* ---------- MODAL ---------- */
 .modal {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
+  inset: 0;
+  background: var(--bg);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  transition: all 0.2s ease;
 }
 
 .modal-card {
-  background: linear-gradient(145deg, #1e2a3a, #0f1724);
-  padding: 2rem 2rem 2.2rem;
-  border-radius: 3rem;
-  text-align: center;
-  box-shadow: 0 25px 45px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 200, 100, 0.4);
-  width: 340px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
 .modal-card h1 {
-  margin: 0 0 0.5rem;
-  font-size: 2.3rem;
-  background: linear-gradient(135deg, #FFD966, #FFA559);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  letter-spacing: 2px;
+  font-family: 'DM Mono', monospace;
+  font-size: 2.8rem;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: -1px;
+  margin-bottom: 4px;
 }
 
 .modal-card p {
-  color: #bbd4f0;
-  margin-bottom: 1.2rem;
-  font-size: 0.9rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 8px;
 }
 
 .modal-card input {
-  width: 85%;
-  padding: 12px 18px;
-  border-radius: 60px;
-  border: none;
-  background: #0f1a24;
-  color: white;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
   font-size: 1rem;
+  font-family: 'DM Mono', monospace;
   text-align: center;
   outline: none;
-  transition: 0.2s;
-  border: 1px solid #ffb347;
-  margin-bottom: 1rem;
+  transition: border-color 0.15s;
 }
 
 .modal-card input:focus {
-  border-color: #ffcc66;
-  box-shadow: 0 0 12px rgba(255, 200, 100, 0.5);
+  border-color: var(--accent);
+}
+
+.modal-card input::placeholder {
+  color: var(--muted);
 }
 
 .modal-card button {
-  background: #ff9f4a;
+  width: 100%;
+  padding: 13px;
+  border-radius: 6px;
   border: none;
-  padding: 12px 28px;
-  border-radius: 60px;
-  font-weight: bold;
-  font-size: 1.2rem;
-  color: #1e2a2f;
+  background: var(--accent);
+  color: #0e0e0e;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: 0.1s linear;
-  box-shadow: 0 5px 0 #a35100;
-  margin-top: 6px;
-  width: 80%;
+  letter-spacing: 0.5px;
+  transition: opacity 0.15s;
+  margin-top: 4px;
+}
+
+.modal-card button:hover {
+  opacity: 0.88;
 }
 
 .modal-card button:active {
-  transform: translateY(2px);
-  box-shadow: 0 2px 0 #a35100;
+  opacity: 0.75;
 }
 
 .hint {
-  margin-top: 18px;
+  margin-top: 8px;
   font-size: 0.75rem;
-  color: #9aaebf;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.6;
 }
 
 .hint kbd {
-  background: #2c2c2c;
-  padding: 2px 8px;
-  border-radius: 30px;
-  font-weight: bold;
-  color: #ffbb66;
-  margin: 0 4px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text);
+  font-size: 0.7rem;
 }
 
 /* ---------- HUD ---------- */
 .game-hud {
   position: fixed;
-  top: 18px;
-  left: 18px;
-  right: 18px;
+  top: 16px;
+  left: 16px;
+  right: 16px;
   pointer-events: none;
   z-index: 200;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  font-weight: bold;
-  text-shadow: 1px 1px 0 #000000aa;
+  align-items: center;
 }
 
 .it-status {
-  background: #000000bb;
-  backdrop-filter: blur(8px);
-  padding: 8px 20px;
-  border-radius: 60px;
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: #ffdd99;
-  border-left: 4px solid #ffaa33;
-  font-family: monospace;
-  letter-spacing: 0.5px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 7px 16px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
 }
 
 .sprint-hint {
-  background: #000000aa;
-  backdrop-filter: blur(5px);
-  padding: 6px 16px;
-  border-radius: 60px;
-  font-size: 0.9rem;
-  color: #ddd;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 7px 14px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .sprint-hint kbd {
-  background: #2a2a2a;
-  padding: 3px 8px;
-  border-radius: 10px;
-  font-weight: bold;
-  color: #ffaa66;
-  box-shadow: inset 0 1px 0 #ffffff30;
+  color: var(--text);
 }
 
 /* Canvas */
 canvas {
   display: block;
   margin: auto;
-  border-radius: 28px;
-  box-shadow: 0 0 0 4px #ffb34755, 0 20px 35px rgba(0, 0, 0, 0.6);
-  background: #1b2a2f;
-  cursor: none;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #111;
 }
 
 /* Toast */
 .toast {
   position: fixed;
-  bottom: 40px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
-  background: #000000dd;
-  backdrop-filter: blur(12px);
-  padding: 10px 24px;
-  border-radius: 60px;
-  color: #ffdd99;
-  font-weight: bold;
-  font-size: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 9px 22px;
+  border-radius: 4px;
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.85rem;
   pointer-events: none;
   z-index: 300;
   white-space: nowrap;
-  border: 1px solid #ffaa55;
-  font-family: monospace;
-  transition: 0.2s;
 }
 
 .hidden {
