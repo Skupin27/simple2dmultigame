@@ -228,6 +228,7 @@ function draw() {
 
 // ----- KEYBOARD HANDLERS -----
 function handleKeyDown(e) {
+  if (document.activeElement === nicknameInput) return;
   const code = e.code;
   if (keys.hasOwnProperty(code)) {
     keys[code] = true;
@@ -236,6 +237,7 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
+  if (document.activeElement === nicknameInput) return;
   const code = e.code;
   if (keys.hasOwnProperty(code)) {
     keys[code] = false;
