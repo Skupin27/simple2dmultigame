@@ -716,7 +716,7 @@ function initTouchControls() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 function initGame(nickname) {
   localNickname = nickname;
-  socket = io();
+  socket = io({ transports: ['websocket'] });
 
   socket.on('connect',            () => socket.emit('setNickname', localNickname));
   socket.on('currentPlayers',     onCurrentPlayers);
