@@ -8,7 +8,7 @@ const app    = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: { origin: '*' },
-  transports: ['websocket'],
+  transports: ['polling', 'websocket'],
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
