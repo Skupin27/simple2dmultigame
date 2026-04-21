@@ -46,6 +46,16 @@ let localPos      = { x: 0, y: 0 };
 let serverPos     = { x: 0, y: 0 };
 let localPosReady = false;
 
+// ── Camera ────────────────────────────────────────────────────────────────────
+let camX = 0, camY = 0;
+
+function resizeCanvas() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
 // ── Obstacles (synced from server) ───────────────────────────────────────────
 let obstacles = [];
 let wallsChangedAt = 0;
@@ -62,24 +72,27 @@ function obstacleBlocked(px, py) {
 
 // ── Darkness overlay canvas ──────────────────────────────────────────────────
 const darknessCanvas = document.createElement('canvas');
-darknessCanvas.width  = CANVAS_W;
-darknessCanvas.height = CANVAS_H;
 const dCtx = darknessCanvas.getContext('2d');
 
-function applyDarknessOverlay(px, py) {
+// screenX/screenY are the player's position in screen-space (already camera-adjusted)
+function applyDarknessOverlay(screenX, screenY) {
+  const W = canvas.width, H = canvas.height;
+  darknessCanvas.width  = W;
+  darknessCanvas.height = H;
+
   const LIGHT_RADIUS = 145;
-  dCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+  dCtx.clearRect(0, 0, W, H);
   dCtx.fillStyle = 'rgba(0,0,0,0.96)';
-  dCtx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  dCtx.fillRect(0, 0, W, H);
 
   dCtx.globalCompositeOperation = 'destination-out';
-  const grd = dCtx.createRadialGradient(px, py, 0, px, py, LIGHT_RADIUS);
+  const grd = dCtx.createRadialGradient(screenX, screenY, 0, screenX, screenY, LIGHT_RADIUS);
   grd.addColorStop(0,    'rgba(0,0,0,1)');
   grd.addColorStop(0.55, 'rgba(0,0,0,0.85)');
   grd.addColorStop(1,    'rgba(0,0,0,0)');
   dCtx.fillStyle = grd;
   dCtx.beginPath();
-  dCtx.arc(px, py, LIGHT_RADIUS, 0, Math.PI * 2);
+  dCtx.arc(screenX, screenY, LIGHT_RADIUS, 0, Math.PI * 2);
   dCtx.fill();
   dCtx.globalCompositeOperation = 'source-over';
 
@@ -387,7 +400,7 @@ function drawTagLog() {
   const now = Date.now();
   ctx.font      = '11px "DM Mono", monospace';
   ctx.textAlign = 'left';
-  let y = CANVAS_H - 14;
+  let y = canvas.height - 14;
   for (const entry of tagLog) {
     const alpha = Math.max(0, 1 - (now - entry.ts) / LOG_TTL);
     if (alpha <= 0) continue;
@@ -435,12 +448,12 @@ function drawEventBanner() {
   ctx.shadowColor = color;
   ctx.shadowBlur  = 18;
   ctx.fillStyle   = color;
-  ctx.fillText(eventName.toUpperCase(), CANVAS_W / 2, CANVAS_H / 2 - 6);
+  ctx.fillText(eventName.toUpperCase(), canvas.width / 2, canvas.height / 2 - 6);
 
   ctx.shadowBlur  = 0;
   ctx.font        = '12px "DM Mono", monospace';
   ctx.fillStyle   = 'rgba(200,200,200,0.8)';
-  ctx.fillText(`${eventTimeLeft}s`, CANVAS_W / 2, CANVAS_H / 2 + 16);
+  ctx.fillText(`${eventTimeLeft}s`, canvas.width / 2, canvas.height / 2 + 16);
 
   ctx.restore();
 }
@@ -483,8 +496,8 @@ function drawEventIndicator() {
   // Timer bar background
   const barW = 120;
   const barH = 4;
-  const bx   = CANVAS_W - 14 - barW;
-  const by   = CANVAS_H - 14;
+  const bx   = canvas.width - 14 - barW;
+  const by   = canvas.height - 14;
   const fraction = Math.max(0, Math.min(1, eventTimeLeft / 30));
 
   ctx.fillStyle   = 'rgba(0,0,0,0.5)';
@@ -493,7 +506,7 @@ function drawEventIndicator() {
   ctx.fillRect(bx, by, barW * fraction, barH);
 
   ctx.fillStyle = color;
-  ctx.fillText(`${icon} ${eventName}`, CANVAS_W - 14, CANVAS_H - 20);
+  ctx.fillText(`${icon} ${eventName}`, canvas.width - 14, canvas.height - 20);
   ctx.restore();
 }
 
@@ -501,8 +514,24 @@ function drawEventIndicator() {
 function draw() {
   const now = Date.now();
 
-  // Earthquake jitter: save context and offset origin randomly
+  // ── Update camera (smooth follow, clamped to world bounds) ────────────────
+  if (localPosReady) {
+    const maxCamX   = Math.max(0, CANVAS_W - canvas.width);
+    const maxCamY   = Math.max(0, CANVAS_H - canvas.height);
+    const targetX   = Math.max(0, Math.min(maxCamX, localPos.x - canvas.width  / 2));
+    const targetY   = Math.max(0, Math.min(maxCamY, localPos.y - canvas.height / 2));
+    camX = lerp(camX, targetX, 0.12);
+    camY = lerp(camY, targetY, 0.12);
+  }
+
+  // ── Fill full screen background (visible for areas outside the world) ─────
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // ── Save + apply camera transform ─────────────────────────────────────────
   ctx.save();
+
   if (currentEvent === 'earthquake') {
     ctx.translate(
       (Math.random() - 0.5) * 7,
@@ -510,9 +539,9 @@ function draw() {
     );
   }
 
-  ctx.clearRect(-20, -20, CANVAS_W + 40, CANVAS_H + 40);
+  ctx.translate(-Math.round(camX), -Math.round(camY));
 
-  // ── Background tint per event ──────────────────────────────────────────────
+  // ── World background tint ─────────────────────────────────────────────────
   const bgTints = {
     darkness:   '#060614',
     blizzard:   '#0a0e14',
@@ -525,7 +554,12 @@ function draw() {
     tiny:       '#060e06',
   };
   ctx.fillStyle = bgTints[currentEvent] || '#111';
-  ctx.fillRect(-20, -20, CANVAS_W + 40, CANVAS_H + 40);
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  // World border
+  ctx.strokeStyle = '#2a2a2a';
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(1, 1, CANVAS_W - 2, CANVAS_H - 2);
 
   // ── Grid ───────────────────────────────────────────────────────────────────
   ctx.strokeStyle = currentEvent === 'darkness' ? '#0d0d0d' : '#161616';
@@ -573,7 +607,6 @@ function draw() {
     // ── phantom_it: IT player is nearly invisible ─────────────────────────
     const isPhantomHidden = (currentEvent === 'phantom_it') && isIt && !isLocal;
     if (isPhantomHidden) {
-      // Draw faint pulsing outline only
       const pulse = 0.12 + Math.abs(Math.sin(now / 500)) * 0.1;
       ctx.save();
       ctx.globalAlpha   = pulse;
@@ -595,7 +628,6 @@ function draw() {
     ctx.shadowColor = isIt ? '#ff5c3a' : 'transparent';
     ctx.shadowBlur  = isIt ? 16 : 0;
 
-    // Ghost mode: non-IT players are translucent
     if (currentEvent === 'ghost' && !isIt) {
       ctx.globalAlpha = isImmune ? 0.2 : 0.45;
     }
@@ -625,24 +657,24 @@ function draw() {
     ctx.fillText(label, drawX, drawY - drawR - (isIt ? 18 : 12));
   }
 
-  // ── Blizzard particles (drawn above players) ──────────────────────────────
+  // ── Blizzard particles (drawn above players, in world space) ─────────────
   if (currentEvent === 'blizzard') {
     updateBlizzardParticles();
     drawBlizzard();
-  } else if (currentEvent !== 'blizzard') {
-    // Drain particles when event ends
+  } else {
     if (blizzardParticles.length > 0) blizzardParticles.length = 0;
   }
 
+  // ── Restore camera transform → back to screen space ──────────────────────
+  ctx.restore();
+
+  // ── Screen-space HUD drawings (no camera offset) ──────────────────────────
   drawTagLog();
   drawEventIndicator();
 
-  // Restore jitter transform before darkness overlay
-  ctx.restore();
-
-  // ── Darkness overlay (applied after ctx.restore so it covers full canvas) ─
+  // ── Darkness overlay (screen space — light centered on player screen pos) ─
   if (currentEvent === 'darkness' && localPlayerId && localPosReady) {
-    applyDarknessOverlay(localPos.x, localPos.y);
+    applyDarknessOverlay(localPos.x - camX, localPos.y - camY);
   }
 
   drawEventBanner();
@@ -671,27 +703,34 @@ function initTouchControls() {
   joystick.style.display  = 'block';
   sprintBtn.style.display = 'flex';
 
-  const MAX  = 38;
-  const DEAD = 8;
+  const MAX  = 50;
+  const DEAD = 10;
   let startX = 0, startY = 0, active = false;
+  let baseX = 0, baseY = 0; // joystick base center (updated on touchstart)
 
   joystick.addEventListener('touchstart', (e) => {
     e.preventDefault();
     active = true;
+    const t = e.touches[0];
     const r = joystick.getBoundingClientRect();
-    startX = r.left + r.width  / 2;
-    startY = r.top  + r.height / 2;
+    baseX  = r.left + r.width  / 2;
+    baseY  = r.top  + r.height / 2;
+    startX = t.clientX;
+    startY = t.clientY;
+    joystick.style.opacity = '1';
   }, { passive: false });
 
   document.addEventListener('touchmove', (e) => {
     if (!active) return;
     e.preventDefault();
     const t  = e.touches[0];
-    const dx = t.clientX - startX;
-    const dy = t.clientY - startY;
+    const dx = t.clientX - baseX;
+    const dy = t.clientY - baseY;
     const dist  = Math.min(Math.hypot(dx, dy), MAX);
     const angle = Math.atan2(dy, dx);
-    thumb.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`;
+    const tx = Math.cos(angle) * dist;
+    const ty = Math.sin(angle) * dist;
+    thumb.style.transform = `translate(${tx}px, ${ty}px)`;
 
     const inv = (currentEvent === 'invert');
     keys.KeyA = inv ? dx >  DEAD : dx < -DEAD;
@@ -704,13 +743,26 @@ function initTouchControls() {
     if (!active) return;
     active = false;
     thumb.style.transform = 'translate(0,0)';
+    joystick.style.opacity = '0.55';
     keys.KeyA = keys.KeyD = keys.KeyW = keys.KeyS = false;
   };
   document.addEventListener('touchend',    endTouch);
   document.addEventListener('touchcancel', endTouch);
 
-  sprintBtn.addEventListener('touchstart', (e) => { e.preventDefault(); keys.ShiftLeft = true;  }, { passive: false });
-  sprintBtn.addEventListener('touchend',   (e) => { e.preventDefault(); keys.ShiftLeft = false; }, { passive: false });
+  sprintBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    keys.ShiftLeft = true;
+    sprintBtn.style.background = 'var(--accent)';
+    sprintBtn.style.color      = '#0e0e0e';
+  }, { passive: false });
+  const endSprint = (e) => {
+    e.preventDefault();
+    keys.ShiftLeft = false;
+    sprintBtn.style.background = 'var(--surface)';
+    sprintBtn.style.color      = 'var(--text)';
+  };
+  sprintBtn.addEventListener('touchend',   endSprint, { passive: false });
+  sprintBtn.addEventListener('touchcancel', endSprint, { passive: false });
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
