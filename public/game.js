@@ -777,6 +777,9 @@ function initGame(nickname) {
 }
 
 const startGame = () => {
+  if (socket) return;                          // already joined — ignore extra clicks
+  joinBtn.disabled = true;
+  joinBtn.textContent = 'joining…';
   let n = nicknameInput.value.trim() || `Runner_${Math.floor(Math.random() * 1000)}`;
   initGame(n.slice(0, 14));
 };
