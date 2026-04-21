@@ -266,10 +266,11 @@ body {
 /* ── Canvas ────────────────────────────────────────────────────────────── */
 canvas {
   display: block;
-  margin: auto;
-  border-radius: 5px;
-  border: 1px solid var(--border);
-  background: #111;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw !important;
+  height: 100vh !important;
+  background: #0a0a0a;
 }
 
 /* ── Toast ─────────────────────────────────────────────────────────────── */
@@ -293,48 +294,53 @@ canvas {
 /* ── Touch joystick ────────────────────────────────────────────────────── */
 .joystick {
   position: fixed;
-  bottom: 40px;
-  left: 40px;
-  width: 100px;
-  height: 100px;
+  bottom: env(safe-area-inset-bottom, 30px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 30px);
+  left: 30px;
+  width: 130px;
+  height: 130px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.05);
+  border: 1.5px solid rgba(255,255,255,0.12);
   z-index: 400;
   touch-action: none;
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0.55;
+  transition: opacity 0.15s;
 }
 
 .joystick-thumb {
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   background: var(--accent);
-  opacity: 0.75;
-  transition: transform 0.05s;
+  opacity: 0.85;
+  transition: transform 0.04s linear;
   pointer-events: none;
+  box-shadow: 0 0 12px rgba(200, 240, 96, 0.4);
 }
 
 .sprint-touch-btn {
   position: fixed;
-  bottom: 52px;
-  right: 40px;
-  width: 72px;
-  height: 72px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 42px);
+  right: 30px;
+  width: 86px;
+  height: 86px;
   border-radius: 50%;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   color: var(--text);
   font-family: 'DM Mono', monospace;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   cursor: pointer;
   z-index: 400;
   touch-action: none;
   display: none;
   align-items: center;
   justify-content: center;
+  transition: background 0.1s, color 0.1s;
 }
 
 /* ── Utility ───────────────────────────────────────────────────────────── */
