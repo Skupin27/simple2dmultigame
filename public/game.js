@@ -716,7 +716,19 @@ function initTouchControls() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 function initGame(nickname) {
   localNickname = nickname;
-  socket = io({ transports: ['websocket'] });
+
+  // Hide modal immediately so the button always feels responsive
+  modal.classList.add('hidden');
+  gameHud.classList.remove('hidden');
+  initTouchControls();
+
+  // Allow polling fallback — required on Render (proxy blocks WS-only upgrades)
+  socket = io({ transports: ['polling', 'websocket'] });
+
+  socket.on('connect_error', (err) => {
+    console.error('Socket connect error:', err.message);
+    showToast('connection failed — retrying…', 3000);
+  });
 
   socket.on('connect',            () => socket.emit('setNickname', localNickname));
   socket.on('currentPlayers',     onCurrentPlayers);
@@ -753,7 +765,7 @@ function initGame(nickname) {
 
     const eventDescs = {
       darkness:   'Lights Out — use your torch!',
-      speed_rush: 'Speed Rush — everyone's faster!',
+      speed_rush: 'Speed Rush — everyone\'s faster!',
       ghost:      'Ghost Mode — run through walls!',
       blizzard:   'Blizzard — slowed in the storm!',
       invert:     'Confusion — controls flipped!',
@@ -770,10 +782,6 @@ function initGame(nickname) {
 
   setInterval(sendMovement, 1000 / 30);
   requestAnimationFrame(draw);
-
-  modal.classList.add('hidden');
-  gameHud.classList.remove('hidden');
-  initTouchControls();
 }
 
 const startGame = () => {
