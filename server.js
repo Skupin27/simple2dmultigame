@@ -15,13 +15,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const TICK_RATE       = 100;
 const BASE_SPEED      = 10;
-const SPRINT_MULT     = 1.5;
-const CANVAS_W        = 1100;
-const CANVAS_H        = 750;
+const SPRINT_MULT     = 1.25;
+const CANVAS_W        = 1800;
+const CANVAS_H        = 900;
 const PLAYER_RADIUS   = 10;
 const TAG_IMMUNITY_MS = 2000;
-const ROUND_DURATION  = 300;
-const BREAK_DURATION  = 10;
+const ROUND_DURATION  = 180;
+const BREAK_DURATION  = 5;
 
 // ── Event pool ───────────────────────────────────────────────────────────────
 // speedMult    : multiplier on BASE_SPEED
@@ -30,12 +30,12 @@ const BREAK_DURATION  = 10;
 const EVENT_POOL = [
   { id: 'normal',     name: 'Normal',     duration: 20, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'darkness',   name: 'Lights Out', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
-  { id: 'speed_rush', name: 'Speed Rush', duration: 18, speedMult: 1.90, ghostNonIt: false, tagRadiusMult: 1.00 },
+  { id: 'speed_rush', name: 'Speed Rush', duration: 18, speedMult: 2.0, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'ghost',      name: 'Ghost Mode', duration: 25, speedMult: 1.00, ghostNonIt: true,  tagRadiusMult: 1.00 },
   { id: 'blizzard',   name: 'Blizzard',   duration: 25, speedMult: 0.60, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'invert',     name: 'Confusion',  duration: 18, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
-  { id: 'big_it',     name: 'Mega IT',    duration: 28, speedMult: 0.80, ghostNonIt: false, tagRadiusMult: 2.60 },
-  { id: 'tiny',       name: 'Micro Mode', duration: 25, speedMult: 1.30, ghostNonIt: false, tagRadiusMult: 0.45 },
+  { id: 'big_it',     name: 'Mega IT',    duration: 28, speedMult: 0.80, ghostNonIt: false, tagRadiusMult: 4.50 },
+  { id: 'tiny',       name: 'Micro Mode', duration: 25, speedMult: 1.30, ghostNonIt: false, tagRadiusMult: 0.50 },
   { id: 'earthquake', name: 'Earthquake', duration: 20, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'phantom_it', name: 'Phantom IT', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
 ];
@@ -94,8 +94,8 @@ setInterval(() => {
     if (obstacleBlocked(p.x, p.y)) {
       let sx, sy, att = 0;
       do {
-        sx = Math.random() * (CANVAS_W - 100) + 50;
-        sy = Math.random() * (CANVAS_H - 100) + 50;
+        sx = Math.random() * (CANVAS_W - 50) + 40;
+        sy = Math.random() * (CANVAS_H - 50) + 40;
       } while (obstacleBlocked(sx, sy) && ++att < 30);
       p.x = sx; p.y = sy;
     }
