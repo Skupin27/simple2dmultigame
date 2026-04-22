@@ -28,7 +28,7 @@ const BREAK_DURATION  = 5;
 // ghostNonIt   : non-IT players skip wall collision
 // tagRadiusMult: scales tag detection distance
 const EVENT_POOL = [
-  { id: 'normal',     name: 'Normal',     duration: 20, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
+  { id: 'normal',     name: 'Normal',     duration: 60, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'darkness',   name: 'Lights Out', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'speed_rush', name: 'Speed Rush', duration: 18, speedMult: 2.0, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'ghost',      name: 'Ghost Mode', duration: 25, speedMult: 1.00, ghostNonIt: true,  tagRadiusMult: 1.00 },
@@ -53,8 +53,8 @@ function generateObstacles() {
   const walls    = [];
   const count    = 5 + Math.floor(Math.random() * 4);
   const margin   = 90;
-  const minGap   = 70;
-  const maxTries = count * 15;
+  const minGap   = 10;
+  const maxTries = count * 20;
 
   for (let attempt = 0; attempt < maxTries && walls.length < count; attempt++) {
     const isHoriz = Math.random() > 0.38;
