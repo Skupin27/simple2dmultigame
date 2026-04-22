@@ -30,7 +30,7 @@ const BREAK_DURATION  = 5;
 const EVENT_POOL = [
   { id: 'normal',     name: 'Normal',     duration: 60, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'darkness',   name: 'Lights Out', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
-  { id: 'speed_rush', name: 'Speed Rush', duration: 18, speedMult: 2.0, ghostNonIt: false, tagRadiusMult: 1.00 },
+  { id: 'speed_rush', name: 'Speed Rush', duration: 18, speedMult: 2.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'ghost',      name: 'Ghost Mode', duration: 25, speedMult: 1.00, ghostNonIt: true,  tagRadiusMult: 1.00 },
   { id: 'blizzard',   name: 'Blizzard',   duration: 25, speedMult: 0.60, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'invert',     name: 'Confusion',  duration: 18, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
@@ -38,6 +38,7 @@ const EVENT_POOL = [
   { id: 'tiny',       name: 'Micro Mode', duration: 25, speedMult: 1.30, ghostNonIt: false, tagRadiusMult: 0.50 },
   { id: 'earthquake', name: 'Earthquake', duration: 20, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'phantom_it', name: 'Phantom IT', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
+  { id: 'zoomies',    name: 'Zoomies',    duration: 15, speedMult: 3.00, ghostNonIt: true,  tagRadiusMult: 1.50 },
 ];
 
 let currentEvent  = EVENT_POOL[0];
