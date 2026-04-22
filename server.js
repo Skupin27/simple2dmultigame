@@ -34,7 +34,7 @@ const EVENT_POOL = [
   { id: 'ghost',      name: 'Ghost Mode', duration: 25, speedMult: 1.00, ghostNonIt: true,  tagRadiusMult: 1.00 },
   { id: 'blizzard',   name: 'Blizzard',   duration: 25, speedMult: 0.60, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'invert',     name: 'Confusion',  duration: 18, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
-  { id: 'big_it',     name: 'Mega IT',    duration: 28, speedMult: 0.80, ghostNonIt: true, tagRadiusMult: 4.50 },
+  { id: 'big_it',     name: 'Mega IT',    duration: 28, speedMult: 0.80, ghostNonIt: true, tagRadiusMult: 4.00 },
   { id: 'tiny',       name: 'Micro Mode', duration: 25, speedMult: 1.30, ghostNonIt: false, tagRadiusMult: 0.50 },
   { id: 'earthquake', name: 'Earthquake', duration: 20, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'phantom_it', name: 'Phantom IT', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
