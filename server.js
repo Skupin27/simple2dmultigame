@@ -16,8 +16,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 const TICK_RATE       = 60;
 const BASE_SPEED      = 10;
 const SPRINT_MULT     = 1.25;
-const CANVAS_W        = 1100;
-const CANVAS_H        = 750;
+const CANVAS_W        = 1200;
+const CANVAS_H        = 900;
 const PLAYER_RADIUS   = 15;
 const TAG_IMMUNITY_MS = 1500;
 const ROUND_DURATION  = 180;
@@ -39,6 +39,8 @@ const EVENT_POOL = [
   { id: 'earthquake', name: 'Earthquake', duration: 20, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'phantom_it', name: 'Phantom IT', duration: 25, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
   { id: 'zoomies',    name: 'Zoomies',    duration: 15, speedMult: 3.00, ghostNonIt: true,  tagRadiusMult: 1.50 },
+  { id: 'vrooom',     name: 'Vroom',      duration: 5,  speedMult: 2.50, ghostNonIt: false, tagRadiusMult: 2.00 },
+  { id: 'ghost_it',   name: 'Ghost IT',   duration: 15, speedMult: 1.00, ghostNonIt: false, tagRadiusMult: 1.00 },
 ];
 
 let currentEvent  = EVENT_POOL[0];
@@ -53,8 +55,8 @@ function pickNextEvent() {
 function generateObstacles() {
   const walls    = [];
   const count    = 5 + Math.floor(Math.random() * 4);
-  const margin   = 90;
-  const minGap   = 10;
+  const margin   = 75;
+  const minGap   = 15;
   const maxTries = count * 20;
 
   for (let attempt = 0; attempt < maxTries && walls.length < count; attempt++) {
