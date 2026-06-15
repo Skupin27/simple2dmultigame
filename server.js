@@ -13,7 +13,7 @@ const io = socketIo(server, {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const TICK_RATE       = 200;
+const TICK_RATE       = 100;
 const BASE_SPEED      = 10;
 const SPRINT_MULT     = 1.25;
 const CANVAS_W        = 1100;
